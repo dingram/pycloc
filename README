@@ -1,0 +1,40 @@
+pycloc is a Python-based OAuth client, aimed at being straightforward to use, in the same way as cURL.
+
+Basic walkthrough:
+
+ 1. Register your application and get a consumer key and secret
+
+ 2. Place these into your ~/.pyclocrc using the hostname of the target API.
+
+      hosts:
+        api.example.com:
+          consumer-secret: $MY_CONSUMER_SECRET
+          consumer-token: $MY_CONSUMER_TOKEN
+
+ 3. Obtain your request token:
+
+      pycloc http://api.example.com/oauth/request_token --request-token
+
+ 4. This will then give you a requst token and secret, and an authorize URL (based on the request_token URL -- adapt as necessary).
+
+ 5. Visit the authorize URL, authorize the application and obtain a verifier.
+
+ 6. Obtain your access token:
+
+      pycloc http://api.example.com/oauth/access_token --access-token -t $REQUEST_TOKEN -T $REQUEST_SECRET -V $VERIFIER
+
+ 7. Save your access token in ~/.pyclocrc:
+
+      hosts:
+        api.example.com:
+          consumer-secret: $MY_CONSUMER_SECRET
+          consumer-token: $MY_CONSUMER_TOKEN
+          user-secret: $ACCESS_TOKEN_SECRET
+          user-token: $ACCESS_TOKEN
+
+ 8. Make requests against the API:
+
+      pycloc http://api.example.com/v1/get_data
+
+      pycloc http://api.example.com/v1/post_something -p -a 'foo=bar' -a 'bz=quux'
+
