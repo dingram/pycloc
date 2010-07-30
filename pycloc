@@ -1,0 +1,249 @@
+#!/usr/bin/env python
+import sys, os
+import getopt
+import urlparse
+import oauth2 as oauth
+import time
+from yaml import safe_load, safe_dump
+# Try to get fast libyaml interfaces if possible
+try:
+  from yaml import CLoader as Loader
+  from yaml import CDumper as Dumper
+except ImportError:
+  # fall back to pure Python
+  from yaml import Loader, Dumper
+
+
+def usage():
+  print """Usage:
+  pycloc [option [...]] URL
+
+General options:
+  -v, --verbose                     Verbose output, including signature base
+                                      string, and full request details
+  -h, --help                        This screen
+  --save-host                       Save consumer/user key/token/secret for
+                                      the current host
+  --use-host=HOST                   Use the specified host
+  -c FILE, --config=FILE            Set the config file to use
+
+Request type:
+  --request-token                   Fetch request token
+  --access-token                    Exchange request token for access token
+  -g, --GET                         GET request (default)
+  -p, --POST                        POST request
+  -u, --PUT                         PUT request
+  -D, --DELETE                      DELETE request
+  -m METHOD, --method=METHOD        Custom request method
+
+Request options:
+  -a ARG=VALUE                      Add query string argument
+  -b ARG=VALUE                      Add request body argument
+  -B DATA, --body-data=DATA         Set the request body to DATA
+  -f FILE, --body-file=FILE         Set the request body to be the contents
+                                      of FILE
+  -C TYPE, --content-type=TYPE      Set the Content-Type request header to TYPE
+  -A TYPE, --accept=TYPE            Set the Accept request header to TYPE
+  -H HEADER, --header=HEADER        Add the given request header
+  -k KEY, --cons-key=KEY            Set the OAuth consumer key
+  -K SECRET, --cons-secret=SECRET   Set the OAuth consumer secret
+  -t TOKEN, --token=TOKEN           Set the OAuth user token
+  -T SECRET, --secret=SECRET        Set the OAuth user secret
+  -V VERIFIER, --verifier=VERIFIER  Set the OAuth verifier (PIN)
+"""
+
+def get_config(configfile):
+  try:
+    f = open(configfile)
+    configdata = safe_load(f)
+    f.close()
+  except IOError:
+    pass
+
+  if configdata is None: configdata = {}
+  if not 'hosts' in configdata: configdata = {'hosts':{}}
+
+  return configdata
+
+def save_config(configfile, data):
+  configdata = data
+  f = open(configfile, 'w')
+  safe_dump(configdata, stream=f, default_flow_style=False)
+  f.close()
+
+def request_token(url, **config):
+  consumer = oauth.Consumer(config['consumer-token'], config['consumer-secret'])
+  client = oauth.Client(consumer)
+
+  print 'HTTP/1.1 GET %s'%(url)
+  print
+  resp, content = client.request(url, 'GET')
+  if resp['status'] != '200':
+    raise Exception('Invalid response status: %s' % resp['status'])
+
+  request_token = dict(urlparse.parse_qsl(content))
+  print "oauth_token = %s"%request_token['oauth_token']
+  print "oauth_token_secret = %s"%request_token['oauth_token_secret']
+  print
+  print "Now visit: %s?oauth_token=%s&oauth_callback=oob to verify"%(urlparse.urljoin(url, 'authorize', False), request_token['oauth_token'])
+
+
+def access_token(url, verifier, **config):
+  consumer = oauth.Consumer(config['consumer-token'], config['consumer-secret'])
+  token = oauth.Token(config['user-token'], config['user-secret'])
+  token.set_verifier(verifier)
+  client = oauth.Client(consumer, token)
+
+  print 'HTTP/1.1 POST %s'%(url)
+  print
+  resp, content = client.request(url, 'POST')
+  if resp['status'] != '200':
+    raise Exception('Invalid response status: %s' % resp['status'])
+
+  access_token = dict(urlparse.parse_qsl(content))
+  print "oauth_token = %s"%access_token['oauth_token']
+  print "oauth_token_secret = %s"%access_token['oauth_token_secret']
+  print
+  print "Now you are authorised to make calls on behalf of this user."
+
+
+def make_request(method, url, **config):
+  print 'HTTP/1.1 %s %s'%(method, url)
+  if 'consumer-token' in config: print 'OAuth-Consumer-Key: %s'%config['consumer-token']
+  if 'consumer-secret' in config: print 'OAuth-Consumer-Secret: %s'%config['consumer-secret']
+  if 'user-token' in config: print 'OAuth-User-Token: %s'%config['user-token']
+  if 'user-secret' in config: print 'OAuth-User-Secret: %s'%config['user-secret']
+  params = {
+      'oauth_version': '1.0',
+      'oauth_nonce': oauth.generate_nonce(),
+      'oauth_timestamp': int(time.time())
+  }
+  consumer = oauth.Consumer(key=config['consumer-token'], secret=config['consumer-secret'])
+  token = oauth.Token(key=config['user-token'], secret=config['user-secret'])
+
+  params['oauth_token'] = token.key
+  params['oauth_consumer_key'] = consumer.key
+
+  req = oauth.Request(method=method, url=url, parameters=params)
+  signature_method = oauth.SignatureMethod_HMAC_SHA1()
+  key, sbs = signature_method.signing_base(req, consumer, token)
+  print 'OAuth-SBS: %s'%sbs
+  print
+
+  client = oauth.Client(consumer, token)
+  resp, content = client.request(url, method)
+  if resp['status'] != '200':
+    print content
+    raise Exception('Invalid response status: %s' % resp['status'])
+
+  print content
+
+
+def main():
+  try:
+    opts, args = getopt.gnu_getopt(sys.argv[1:], 'hc:vgpuDm:a:b:B:f:C:A:k:K:t:T:V:', ['help', 'verbose', 'save-host', 'use-host=', 'config=', 'request-token', 'access-token', 'GET', 'POST', 'PUT', 'DELETE', 'method=', 'body-data=', 'body-file=', 'content-type=', 'accept=', 'cons-key=', 'cons-secret=', 'consumer-key=', 'consumer-secret=', 'token=', 'secret=', 'verifier='])
+  except getopt.GetoptError, err:
+    print str(err)+"\n"
+    usage()
+    sys.exit(2)
+
+  if len(args) != 1:
+    print "Please specify exactly one URL.\n"
+    usage()
+    sys.exit(3)
+  url = args[0]
+
+  config = {
+    'file': '~/.pyclocrc',
+    'method': 'GET',
+  }
+
+  for o, a in opts:
+    if o in ('-h', '--help'):
+      usage()
+      sys.exit()
+    elif o in ('-c', '--config'):
+      config['file'] = a
+    elif o in ('-v', '--verbose'):
+      config['verbose'] = True
+    elif o == '--save-host':
+      config['save-host'] = True
+    elif o == '--use-host':
+      config['use-host'] = a
+    elif o == '--request-token':
+      config['method'] = 'request-token'
+    elif o == '--access-token':
+      config['method'] = 'access-token'
+    elif o in ('-g', '--GET'):
+      config['method'] = 'GET'
+    elif o in ('-p', '--POST'):
+      config['method'] = 'POST'
+    elif o in ('-u', '--PUT'):
+      config['method'] = 'PUT'
+    elif o in ('-D', '--DELETE'):
+      config['method'] = 'DELETE'
+    elif o in ('-m', '--method'):
+      config['method'] = a
+    elif o in ('-k', '--cons-key', '--consumer-key'):
+      config['consumer-token'] = a
+    elif o in ('-K', '--cons-secret', '--consumer-secret'):
+      config['consumer-secret'] = a
+    elif o in ('-t', '--token'):
+      config['user-token'] = a
+    elif o in ('-T', '--secret'):
+      config['user-secret'] = a
+    elif o in ('-V', '--verifier'):
+      config['verifier'] = a
+    else:
+      print 'Unhandled option %s'%o
+      sys.exit(1)
+
+  config['file'] = os.path.expanduser(config['file'])
+  if config['file'] == '~/.pyclocrc':
+    print "Could not detect your home directory."
+    sys.exit(1)
+
+  if not 'use-host' in config:
+    parsed_url = urlparse.urlparse(url, '', False)
+    config['use-host'] = parsed_url.netloc
+
+  fileconfig = get_config(config['file'])
+  if 'hosts' in fileconfig and config['use-host'] in fileconfig['hosts']:
+    hostconfig = fileconfig['hosts'][config['use-host']]
+    config = dict(hostconfig, **config)
+  else:
+    hostconfig = {}
+
+  if not 'consumer-token' in config or not 'consumer-secret' in config:
+    print 'Consumer key/secret required'
+    sys.exit(1)
+
+  if config['method'] == 'request-token':
+    request_token(url, **config)
+  elif config['method'] == 'access-token':
+    if not 'user-token' in config or not 'user-secret' in config:
+      print 'Request token/secret required'
+      sys.exit(1)
+    if not 'verifier' in config:
+      print 'Verifier (PIN) required'
+      sys.exit(1)
+    access_token(url, **config)
+  else:
+    if not 'user-token' in config or not 'user-secret' in config:
+      print 'Access token/secret required'
+      sys.exit(1)
+    make_request(url=url, **config)
+
+  if 'save-host' in config and config['save-host'] == True:
+    if 'consumer-token'  in config: hostconfig['consumer-token']  = config['consumer-token']
+    if 'consumer-secret' in config: hostconfig['consumer-secret'] = config['consumer-secret']
+    if 'user-token'      in config: hostconfig['user-token']      = config['user-token']
+    if 'user-secret'     in config: hostconfig['user-secret']     = config['user-secret']
+
+    fileconfig['hosts'][config['use-host']] = hostconfig
+
+  save_config(config['file'], fileconfig)
+
+
+if __name__ == "__main__":
+  main()
