@@ -2,16 +2,25 @@
 import sys, os
 import getopt
 import urlparse
-import oauth2 as oauth
 import time
-from yaml import safe_load, safe_dump
-# Try to get fast libyaml interfaces if possible
 try:
-  from yaml import CLoader as Loader
-  from yaml import CDumper as Dumper
+  import oauth2 as oauth
 except ImportError:
-  # fall back to pure Python
-  from yaml import Loader, Dumper
+  print "Please install python-oauth2 from http://github.com/simplegeo/python-oauth2"
+  sys.exit(1)
+
+try:
+  from yaml import safe_load, safe_dump
+  # Try to get fast libyaml interfaces if possible
+  try:
+    from yaml import CLoader as Loader
+    from yaml import CDumper as Dumper
+  except ImportError:
+    # fall back to pure Python
+    from yaml import Loader, Dumper
+except ImportError:
+  print "Please install PyYAML from http://pypi.python.org/pypi/PyYAML"
+  sys.exit(1)
 
 
 def usage():
