@@ -1,6 +1,6 @@
 ## Introduction ##
 
-pycloc is a Python-based OAuth client, aimed at being straightforward to use, in the same way as cURL.
+pycloc is a Python-based OAuth 1.0a client, aimed at being straightforward to use, in the same way as cURL.
 
 ### Requirements ###
 
@@ -11,10 +11,10 @@ pycloc requires Python 2.5+ (possibly 2.4, but untested), [python-oauth2](http:/
  1. [Register your application with Twitter](http://dev.twitter.com/apps) to get a consumer key and secret.
  2. Obtain your request token:
 
-        pycloc https://api.twitter.com/oauth/request_token --request-token -k $CONSUMER_KEY -K $CONSUMER_SECRET
+        pycloc 'https://api.twitter.com/oauth/request_token&oauth_callback=oob' --request-token -k $CONSUMER_KEY -K $CONSUMER_SECRET
 
  4. This will then give you a requst token and secret.
- 5. Visit `https://api.twitter.com/oauth/authorize?oauth_token=$TOKEN&oauth_callback=oob`
+ 5. Visit `https://api.twitter.com/oauth/authorize?oauth_token=$TOKEN`
     to authorize the application and obtain a verifier PIN.
  6. Obtain your access token:
 
