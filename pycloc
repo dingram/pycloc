@@ -58,6 +58,8 @@ Request options:
   -H HEADER, --header=HEADER        Add the given request header
   -k KEY, --cons-key=KEY            Set the OAuth consumer key
   -K SECRET, --cons-secret=SECRET   Set the OAuth consumer secret
+  -l URL, --callback=URL            Set the OAuth callback URL
+  -L, --callback-oob                Set the OAuth callback to be out-of-band
   -t TOKEN, --token=TOKEN           Set the OAuth user token
   -T SECRET, --secret=SECRET        Set the OAuth user secret
   -V VERIFIER, --verifier=VERIFIER  Set the OAuth verifier (PIN)
@@ -86,9 +88,26 @@ def request_token(url, **config):
   consumer = oauth.Consumer(config['consumer-token'], config['consumer-secret'])
   client = oauth.Client(consumer)
 
-  print 'HTTP/1.1 GET %s'%(url)
+  body = None
+  headers = {}
+
+  if 'headers' in config:
+    headers = config['headers']
+
+  if 'body-args' not in config:
+    config['body-args'] = []
+  if 'oauth-callback' in config:
+    config['body-args'].append('oauth_callback='+urllib.quote_plus(config['oauth-callback']))
+
+  if 'body' in config:
+    body = config['body']
+  elif 'body-args' in config:
+    headers['Content-Type'] = 'application/x-www-form-urlencoded'
+    body = '&'.join(config['body-args'])
+
+  print 'HTTP/1.1 POST %s'%(url)
   print
-  resp, content = client.request(url, 'GET')
+  resp, content = client.request(url, method='POST', body=body, headers=headers)
   print
   if resp['status'] != '200':
     print content
@@ -98,7 +117,7 @@ def request_token(url, **config):
   print "oauth_token = %s"%request_token['oauth_token']
   print "oauth_token_secret = %s"%request_token['oauth_token_secret']
   print
-  print "Now visit: %s?oauth_token=%s&oauth_callback=oob to verify"%(urlparse.urljoin(url, 'authorize', False), request_token['oauth_token'])
+  print "Now visit: %s?oauth_token=%s to authorize the app"%(urlparse.urljoin(url, 'authorize', False), request_token['oauth_token'])
   return (request_token['oauth_token'], request_token['oauth_token_secret'])
 
 
@@ -108,10 +127,23 @@ def access_token(url, verifier, **config):
   token.set_verifier(verifier)
   client = oauth.Client(consumer, token)
 
+  body = None
+  headers = {}
+
+  if 'headers' in config:
+    headers = config['headers']
+
+  if 'body' in config:
+    body = config['body']
+  elif 'body-args' in config:
+    headers['Content-Type'] = 'application/x-www-form-urlencoded'
+    body = '&'.join(config['body-args'])
+
   print 'HTTP/1.1 POST %s'%(url)
   print
-  resp, content = client.request(url, 'POST')
+  resp, content = client.request(url, method='POST', body=body, headers=headers)
   if resp['status'] != '200':
+    print content
     raise Exception('Invalid response status: %s' % resp['status'])
 
   access_token = dict(urlparse.parse_qsl(content))
@@ -169,7 +201,7 @@ def make_request(method, url, **config):
 
 def main():
   try:
-    opts, args = getopt.gnu_getopt(sys.argv[1:], 'hc:vgpuDm:a:b:B:f:C:A:H:k:K:t:T:V:', ['help', 'verbose', 'save-host', 'use-host=', 'config=', 'request-token', 'access-token', 'GET', 'POST', 'PUT', 'DELETE', 'method=', 'body-data=', 'body-file=', 'content-type=', 'accept=', 'header=', 'cons-key=', 'cons-secret=', 'consumer-key=', 'consumer-secret=', 'token=', 'secret=', 'verifier='])
+    opts, args = getopt.gnu_getopt(sys.argv[1:], 'hc:vgpuDm:a:b:B:f:C:A:H:k:K:l:Lt:T:V:', ['help', 'verbose', 'save-host', 'use-host=', 'config=', 'request-token', 'access-token', 'GET', 'POST', 'PUT', 'DELETE', 'method=', 'body-data=', 'body-file=', 'content-type=', 'accept=', 'header=', 'cons-key=', 'cons-secret=', 'consumer-key=', 'consumer-secret=', 'callback=', 'callback-url=', 'callback-oob', 'oob', 'token=', 'secret=', 'verifier='])
   except getopt.GetoptError, err:
     print str(err)+"\n"
     usage()
@@ -239,6 +271,11 @@ def main():
     elif o in ('-H', '--header'):
       k,v = a.split(':',1)
       config['headers'][k] = v.lstrip(' ')
+
+    elif o in ('-l', '--callback', '--callback-url'):
+      config['oauth-callback'] = a
+    elif o in ('-L', '--callback-oob', '--oob'):
+      config['oauth-callback'] = 'oob'
 
     elif o in ('-k', '--cons-key', '--consumer-key'):
       config['consumer-token'] = a
