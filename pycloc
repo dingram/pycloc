@@ -2,6 +2,7 @@
 import sys, os
 import getopt
 import urlparse
+import urllib
 import time
 try:
   import oauth2 as oauth
@@ -47,8 +48,8 @@ Request type:
   -m METHOD, --method=METHOD        Custom request method
 
 Request options:
-  -a ARG=VALUE                      Add query string argument
-  -b ARG=VALUE                      Add request body argument
+  -a ARG=VALUE                      Add request body argument and urlencodes it
+  -b ARG=VALUE                      Add request body argument (no urlencoding)
   -B DATA, --body-data=DATA         Set the request body to DATA
   -f FILE, --body-file=FILE         Set the request body to be the contents
                                       of FILE
@@ -144,11 +145,24 @@ def make_request(method, url, **config):
   print 'OAuth-SBS: %s'%sbs
   print
 
+  body = None
+  headers = {}
+
+  if 'headers' in config:
+    headers = config['headers']
+
+  if 'body' in config:
+    body = config['body']
+  elif 'body-args' in config:
+    headers['Content-Type'] = 'application/x-www-form-urlencoded'
+    body = '&'.join(config['body-args'])
+
   client = oauth.Client(consumer, token)
-  resp, content = client.request(url, method)
+  resp, content = client.request(url, method=method, body=body, headers=headers)
   if resp['status'] != '200':
     print content
     raise Exception('Invalid response status: %s' % resp['status'])
+  # TODO: headers (keys from resp other than 'status')
 
   print content
 
@@ -170,7 +184,8 @@ def main():
   config = {
     'file': '~/.pyclocrc',
     'method': 'GET',
-    'headers': [],
+    'headers': {},
+    'body-args': [],
   }
 
   for o, a in opts:
@@ -201,12 +216,29 @@ def main():
     elif o in ('-m', '--method'):
       config['method'] = a
 
+    elif o == '-a':
+      k,v = a.split('=',1)
+      config['body-args'].append(urllib.quote_plus(k)+'='+urllib.quote_plus(v))
+    elif o == '-b':
+      config['body-args'].append(a)
+    elif o in ('-B', '--body-data'):
+      config['body'] = a
+    elif o in ('-f', '--file'):
+      try:
+        f = fopen(a, 'rb')
+        config['body'] = f.read()
+        f.close()
+      except Exception as e:
+        print e
+        sys.exit(1)
+
     elif o in ('-C', '--content-type'):
-      config['content-type'] = a
+      config['headers']['Content-Type'] = a
     elif o in ('-A', '--accept'):
-      config['accept'] = a
+      config['headers']['Accept'] = a
     elif o in ('-H', '--header'):
-      config['headers'].append(a)
+      k,v = a.split(':',1)
+      config['headers'][k] = v.lstrip(' ')
 
     elif o in ('-k', '--cons-key', '--consumer-key'):
       config['consumer-token'] = a
