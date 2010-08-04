@@ -4,11 +4,7 @@ import getopt
 import urlparse
 import urllib
 import time
-try:
-  import oauth2 as oauth
-except ImportError:
-  print "Please install python-oauth2 from http://github.com/simplegeo/python-oauth2"
-  sys.exit(1)
+import oauth_client as oauth
 
 try:
   from yaml import safe_load, safe_dump
