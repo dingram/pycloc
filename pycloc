@@ -67,8 +67,8 @@ General options:
   -v, --verbose                     Verbose output, including signature base
                                       string, and full request details
   -h, --help                        This screen
-  --save-host                       Save request/access token/secret for the
-                                      current host
+  --save                            Force saving of tokens for this host
+  --no-save                         Do not save any tokens for this host
   --use-host=HOST                   Use the specified host instead of auto-
                                       detecting
   -c FILE, --config=FILE            Set the config file to use
@@ -268,7 +268,7 @@ def make_request(method, url, silent=False, **config):
 
 def main():
   try:
-    opts, args = getopt.gnu_getopt(sys.argv[1:], 'hc:vgpuDm:a:b:B:f:C:A:H:k:K:l:Lt:T:V:', ['help', 'verbose', 'save-host', 'use-host=', 'config=', 'request-token', 'access-token', 'GET', 'POST', 'PUT', 'DELETE', 'method=', 'body-data=', 'body-file=', 'content-type=', 'accept=', 'header=', 'cons-key=', 'cons-secret=', 'consumer-key=', 'consumer-secret=', 'callback=', 'callback-url=', 'callback-oob', 'oob', 'token=', 'secret=', 'verifier='])
+    opts, args = getopt.gnu_getopt(sys.argv[1:], 'hc:vgpuDm:a:b:B:f:C:A:H:k:K:l:Lt:T:V:', ['help', 'verbose', 'save', 'no-save', 'use-host=', 'config=', 'request-token', 'access-token', 'GET', 'POST', 'PUT', 'DELETE', 'method=', 'body-data=', 'body-file=', 'content-type=', 'accept=', 'header=', 'cons-key=', 'cons-secret=', 'consumer-key=', 'consumer-secret=', 'callback=', 'callback-url=', 'callback-oob', 'oob', 'token=', 'secret=', 'verifier='])
   except getopt.GetoptError, err:
     print str(err)+"\n"
     usage()
@@ -296,8 +296,10 @@ def main():
       config['file'] = a
     elif o in ('-v', '--verbose'):
       config['verbosity'] += 1
-    elif o == '--save-host':
+    elif o == '--save':
       config['save-host'] = True
+    elif o == '--no-save':
+      config['save-host'] = False
     elif o == '--use-host':
       config['use-host'] = a
 
@@ -405,18 +407,26 @@ def main():
 
   should_save = 'save-host' in config and config['save-host'] == True
 
-  if 'consumer-token'  in config and (should_save or 'consumer-token'  not in hostconfig): hostconfig['consumer-token']  = config['consumer-token']
-  if 'consumer-secret' in config and (should_save or 'consumer-secret' not in hostconfig): hostconfig['consumer-secret'] = config['consumer-secret']
-  if 'user-token'      in config and (should_save or 'user-token'      not in hostconfig): hostconfig['user-token']      = config['user-token']
-  if 'user-secret'     in config and (should_save or 'user-secret'     not in hostconfig): hostconfig['user-secret']     = config['user-secret']
-  if 'req-token'       in config and (should_save or 'req-token'       not in hostconfig): hostconfig['req-token']       = config['req-token']
-  if 'req-secret'      in config and (should_save or 'req-secret'      not in hostconfig): hostconfig['req-secret']      = config['req-secret']
+  if 'save-host' not in config or config['save-host'] == True:
+    if 'consumer-token'  in config and (should_save or 'consumer-token'  not in hostconfig):
+      hostconfig['consumer-token']  = config['consumer-token']
+    if 'consumer-secret' in config and (should_save or 'consumer-secret' not in hostconfig):
+      hostconfig['consumer-secret'] = config['consumer-secret']
+    if 'user-token'      in config and (should_save or 'user-token'      not in hostconfig):
+      hostconfig['user-token']      = config['user-token']
+    if 'user-secret'     in config and (should_save or 'user-secret'     not in hostconfig):
+      hostconfig['user-secret']     = config['user-secret']
+    if 'req-token'       in config and (should_save or 'req-token'       not in hostconfig):
+      hostconfig['req-token']       = config['req-token']
+    if 'req-secret'      in config and (should_save or 'req-secret'      not in hostconfig):
+      hostconfig['req-secret']      = config['req-secret']
 
   # remove old request tokens
-  if 'req-token'  in hostconfig and 'user-token'  in config and config['method'] == 'access_token': del hostconfig['req-token']
-  if 'req-secret' in hostconfig and 'user-secret' in config and config['method'] == 'access_token': del hostconfig['req-secret']
+  #if 'req-token'  in hostconfig and 'user-token'  in hostconfig and config['method'] == 'access_token': del hostconfig['req-token']
+  #if 'req-secret' in hostconfig and 'user-secret' in hostconfig and config['method'] == 'access_token': del hostconfig['req-secret']
 
-  fileconfig['hosts'][config['use-host']] = hostconfig
+  if 'save-host' not in config or config['save-host'] == True:
+    fileconfig['hosts'][config['use-host']] = hostconfig
 
   save_config(config['file'], fileconfig)
 
