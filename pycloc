@@ -263,6 +263,20 @@ def make_request(method, url, silent=False, **config):
   if not silent or config['verbosity'] > 0:
     print
 
+  if resp['status'] == '401' and re.search('oauth_problem=', content):
+    problem_details = dict(urlparse.parse_qsl(content))
+    print '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
+    print '!!!!!!!!!!!!!!!!!    OAuth protocol error occurred    !!!!!!!!!!!!!!!!!!'
+    print '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
+    print '  Problem: %s' % problem_details['oauth_problem']
+    if 'debug_sbs' in problem_details:
+      print '  Debug SBS: %s' % problem_details['debug_sbs']
+      print '  Our SBS:   %s' % sbs
+    if 'oauth_parameters_absent' in problem_details:
+      print '  Missing parameters: %s' % problem_details['oauth_parameters_absent']
+    print '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
+    print
+
   return (resp, content)
 
 
