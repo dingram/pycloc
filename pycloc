@@ -4,6 +4,8 @@ import getopt
 import urlparse
 import urllib
 import time
+import re
+
 import oauth_client as oauth
 
 try:
@@ -18,6 +20,43 @@ try:
 except ImportError:
   print "Please install PyYAML from http://pypi.python.org/pypi/PyYAML"
   sys.exit(1)
+
+http_codes = {
+    '200': 'OK',
+    '201': 'Created',
+    '204': 'No Content',
+    '300': 'Multiple Choices',
+    '301': 'Moved Permanently',
+    '302': 'Found',
+    '303': 'See Other',
+    '304': 'Not Modified',
+    '400': 'Bad Request',
+    '401': 'Unauthorized',
+    '402': 'Payment Required',
+    '403': 'Forbidden',
+    '404': 'Not Found',
+    '405': 'Method Not Allowed',
+    '406': 'Not Acceptable',
+    '407': 'Proxy Authentication Required',
+    '408': 'Request Timeout',
+    '409': 'Conflict',
+    '410': 'Gone',
+    '411': 'Length Required',
+    '412': 'Precondition Failed',
+    '413': 'Request Entity Too Large',
+    '414': 'Request-URI Too Long',
+    '415': 'Unsupported Media Type',
+    '416': 'Requested Range Not Satisfiable',
+    '417': 'Expectation Failed',
+    '418': 'I\'m a teapot',
+    '500': 'Internal Server Error',
+    '501': 'Not Implemented',
+    '502': 'Bad Gateway',
+    '503': 'Service Unavailable',
+    '504': 'Gateway Timeout',
+    '505': 'HTTP Version Not Supported',
+    '509': 'Bandwidth Limit Exceeded',
+}
 
 
 def usage():
@@ -81,98 +120,38 @@ def save_config(configfile, data):
   f.close()
 
 def request_token(url, **config):
-  consumer = oauth.Consumer(config['consumer-token'], config['consumer-secret'])
-  client = oauth.Client(consumer)
+  config['method']='POST'
+  resp, content = make_request(url=url, silent=True, **config);
 
-  body = None
-  headers = {}
-
-  if 'headers' in config:
-    headers = config['headers']
-
-  if 'body-args' not in config:
-    config['body-args'] = []
-  if 'oauth-callback' in config:
-    config['body-args'].append('oauth_callback='+urllib.quote_plus(config['oauth-callback']))
-
-  if 'body' in config:
-    body = config['body']
-  elif 'body-args' in config:
-    headers['Content-Type'] = 'application/x-www-form-urlencoded'
-    body = '&'.join(config['body-args'])
-
-  print 'HTTP/1.1 POST %s'%(url)
-  print
-  resp, content = client.request(url, method='POST', body=body, headers=headers)
-  print
   if resp['status'] != '200':
     print content
     raise Exception('Invalid response status: %s' % resp['status'])
 
   request_token = dict(urlparse.parse_qsl(content))
-  print "oauth_token = %s"%request_token['oauth_token']
-  print "oauth_token_secret = %s"%request_token['oauth_token_secret']
+  print "Request token        = %s"%request_token['oauth_token']
+  print "Request token secret = %s"%request_token['oauth_token_secret']
   print
   print "Now visit: %s?oauth_token=%s to authorize the app"%(urlparse.urljoin(url, 'authorize', False), request_token['oauth_token'])
   return (request_token['oauth_token'], request_token['oauth_token_secret'])
 
 
-def access_token(url, verifier, **config):
-  consumer = oauth.Consumer(config['consumer-token'], config['consumer-secret'])
-  token = oauth.Token(config['req-token'], config['req-secret'])
-  token.set_verifier(verifier)
-  client = oauth.Client(consumer, token)
+def access_token(url, **config):
+  config['method']='POST'
+  resp, content = make_request(url=url, silent=True, **config);
 
-  body = None
-  headers = {}
-
-  if 'headers' in config:
-    headers = config['headers']
-
-  if 'body' in config:
-    body = config['body']
-  elif 'body-args' in config:
-    headers['Content-Type'] = 'application/x-www-form-urlencoded'
-    body = '&'.join(config['body-args'])
-
-  print 'HTTP/1.1 POST %s'%(url)
-  print
-  resp, content = client.request(url, method='POST', body=body, headers=headers)
   if resp['status'] != '200':
     print content
     raise Exception('Invalid response status: %s' % resp['status'])
 
   access_token = dict(urlparse.parse_qsl(content))
-  print "oauth_token = %s"%access_token['oauth_token']
-  print "oauth_token_secret = %s"%access_token['oauth_token_secret']
+  print "Access token        = %s"%access_token['oauth_token']
+  print "Access token secret = %s"%access_token['oauth_token_secret']
   print
   print "Now you are authorised to make calls on behalf of this user."
   return (access_token['oauth_token'], access_token['oauth_token_secret'])
 
 
-def make_request(method, url, **config):
-  print 'HTTP/1.1 %s %s'%(method, url)
-  if 'consumer-token' in config: print 'OAuth-Consumer-Key: %s'%config['consumer-token']
-  if 'consumer-secret' in config: print 'OAuth-Consumer-Secret: %s'%config['consumer-secret']
-  if 'user-token' in config: print 'OAuth-User-Token: %s'%config['user-token']
-  if 'user-secret' in config: print 'OAuth-User-Secret: %s'%config['user-secret']
-  params = {
-      'oauth_version': '1.0',
-      'oauth_nonce': oauth.generate_nonce(),
-      'oauth_timestamp': int(time.time())
-  }
-  consumer = oauth.Consumer(key=config['consumer-token'], secret=config['consumer-secret'])
-  token = oauth.Token(key=config['user-token'], secret=config['user-secret'])
-
-  params['oauth_token'] = token.key
-  params['oauth_consumer_key'] = consumer.key
-
-  req = oauth.Request(method=method, url=url, parameters=params)
-  signature_method = oauth.SignatureMethod_HMAC_SHA1()
-  key, sbs = signature_method.signing_base(req, consumer, token)
-  print 'OAuth-SBS: %s'%sbs
-  print
-
+def get_body_headers(config):
   body = None
   headers = {}
 
@@ -181,18 +160,110 @@ def make_request(method, url, **config):
 
   if 'body' in config:
     body = config['body']
-  elif 'body-args' in config:
+  elif 'body-args' in config and len(config['body-args']):
     headers['Content-Type'] = 'application/x-www-form-urlencoded'
     body = '&'.join(config['body-args'])
 
-  client = oauth.Client(consumer, token)
-  resp, content = client.request(url, method=method, body=body, headers=headers)
-  if resp['status'] != '200':
-    print content
-    raise Exception('Invalid response status: %s' % resp['status'])
-  # TODO: headers (keys from resp other than 'status')
+  return (body, headers)
 
-  print content
+def print_xfer(dir, data):
+  data = re.sub('^', dir, data)
+  print data
+
+def print_xfer_in(data=''):
+  print_xfer('<<< ', data)
+
+def print_xfer_out(data=''):
+  print_xfer('>>> ', data)
+
+def print_oauth_info(method, url, consumer=None, token=None, body=None, headers=None, **config):
+  if config['verbosity'] > 0:
+    print_xfer_out('%s %s HTTP/1.1'%(method, url))
+  if config['verbosity'] > 2:
+    if consumer is not None:
+      print_xfer_out('X-OAuth-Consumer-Key: %s'    % consumer.key)
+      print_xfer_out('X-OAuth-Consumer-Secret: %s' % consumer.secret)
+    if token is not None:
+      print_xfer_out('X-OAuth-User-Token: %s'  % token.key)
+      print_xfer_out('X-OAuth-User-Secret: %s' % token.secret)
+
+  if not isinstance(headers, dict):
+      headers = {}
+
+  signature_method = oauth.SignatureMethod_HMAC_SHA1()
+
+  parameters = {
+    'oauth_timestamp': oauth.Request.make_timestamp(),
+    'oauth_nonce': oauth.Request.make_nonce(),
+    'oauth_signature_method': signature_method.name,
+  }
+
+  is_multipart = method == 'POST' and headers.get('Content-Type', 
+      'application/x-www-form-urlencoded') != 'application/x-www-form-urlencoded'
+
+  if body and method == "POST" and not is_multipart:
+      parameters.update(dict(parse_qsl(body)))
+
+  req = oauth.Request.from_consumer_and_token(consumer, 
+      token=token, http_method=method, http_url=url, 
+      parameters=parameters)
+
+  key, sbs = signature_method.signing_base(req, consumer, token)
+  signature = signature_method.sign(req, consumer, token)
+  req.sign_request(signature_method, consumer, token)
+
+  if config['verbosity'] > 1:
+    print_xfer_out('X-OAuth-SBS: %s' % sbs)
+    print_xfer_out('X-OAuth-Signature-Method: %s' % signature_method.name)
+    print_xfer_out('X-OAuth-Signature-Key: %s' % key)
+    print_xfer_out('X-OAuth-Signature: %s' % signature)
+
+  if config['verbosity'] > 0:
+    print_xfer_out('Authorization: %s'%req.to_header()['Authorization'])
+    for header in headers:
+      print_xfer_out(header+': '+headers[header])
+    if body is not None:
+      print_xfer_out()
+      print_xfer_out(body)
+    print
+
+
+  return parameters, sbs
+
+
+
+def make_request(method, url, silent=False, **config):
+  consumer = oauth.Consumer(key=config['consumer-token'], secret=config['consumer-secret'])
+  if 'user-token' in config and 'user-secret' in config:
+    token = oauth.Token(key=config['user-token'], secret=config['user-secret'])
+  elif 'req-token' in config and 'req-secret' in config:
+    token = oauth.Token(key=config['req-token'], secret=config['req-secret'])
+  else:
+    token = None
+
+  if token is not None and 'verifier' in config: token.set_verifier(config['verifier'])
+
+  body, headers = get_body_headers(config)
+
+  params, sbs = print_oauth_info(method, url, consumer=consumer, token=token, body=body, headers=headers, verbosity=config['verbosity'])
+
+  client = oauth.Client(consumer, token)
+  resp, content = client.request(url, method=method, body=body, headers=headers, parameters=params)
+
+  if config['verbosity'] > 0:
+    print_xfer_in('HTTP/1.1 %s %s'%(resp['status'], http_codes.get(resp['status'], 'Unknown')))
+    for header in resp:
+      if header != 'status':
+        print_xfer_in(header+': '+resp[header])
+    print_xfer_in()
+
+  if not silent and content is not None:
+    print(content)
+
+  if not silent or config['verbosity'] > 0:
+    print
+
+  return (resp, content)
 
 
 def main():
@@ -214,6 +285,7 @@ def main():
     'method': 'GET',
     'headers': {},
     'body-args': [],
+    'verbosity': 0,
   }
 
   for o, a in opts:
@@ -223,7 +295,7 @@ def main():
     elif o in ('-c', '--config'):
       config['file'] = a
     elif o in ('-v', '--verbose'):
-      config['verbose'] = True
+      config['verbosity'] += 1
     elif o == '--save-host':
       config['save-host'] = True
     elif o == '--use-host':
