@@ -503,8 +503,15 @@ class Request(dict):
 class Client(httplib2.Http):
     """OAuthClient is a worker to attempt to execute a request."""
 
+    # Default: Always use Authorization header for oauth_ arguments.
+    AUTH_HEADER = 'header'
+    # Put the oauth_ arguments in the query string. Not currently supported.
+    AUTH_URI = 'uri'
+    # Put the oauth_ arguments in the body. Only valid with POST. Not currently supported.
+    AUTH_FORM = 'form'
+
     def __init__(self, consumer, token=None, cache=None, timeout=None,
-        proxy_info=None):
+        proxy_info=None, auth_style=AUTH_HEADER):
 
         if consumer is not None and not isinstance(consumer, Consumer):
             raise ValueError("Invalid consumer.")
@@ -515,6 +522,7 @@ class Client(httplib2.Http):
         self.consumer = consumer
         self.token = token
         self.method = SignatureMethod_HMAC_SHA1()
+        self.auth_style = auth_style
 
         httplib2.Http.__init__(self, cache=cache, timeout=timeout, 
             proxy_info=proxy_info)
@@ -548,17 +556,20 @@ class Client(httplib2.Http):
 
         req.sign_request(self.method, self.consumer, self.token)
 
-        if method == "POST":
-            headers['Content-Type'] = headers.get('Content-Type', 
-                DEFAULT_CONTENT_TYPE)
-            if is_multipart:
-                headers.update(req.to_header())
-            else:
-                body = req.to_postdata()
-        elif method == "GET":
-            uri = req.to_url()
+        if self.auth_style == Client.AUTH_HEADER:
+          headers.update(req.to_header())
         else:
-            headers.update(req.to_header())
+          if method == "POST":
+              headers['Content-Type'] = headers.get('Content-Type', 
+                  DEFAULT_CONTENT_TYPE)
+              if is_multipart:
+                  headers.update(req.to_header())
+              else:
+                  body = req.to_postdata()
+          elif method == "GET":
+              uri = req.to_url()
+          else:
+              headers.update(req.to_header())
 
         return httplib2.Http.request(self, uri, method=method, body=body, 
             headers=headers, redirections=redirections, 
