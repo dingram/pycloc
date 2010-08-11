@@ -358,8 +358,10 @@ def main():
 
     elif o in ('-l', '--callback', '--callback-url'):
       config['oauth-callback'] = a
+      config['body-args'].append('oauth_callback='+urllib.quote_plus(v))
     elif o in ('-L', '--callback-oob', '--oob'):
       config['oauth-callback'] = 'oob'
+      config['body-args'].append('oauth_callback=oob')
 
     elif o in ('-k', '--cons-key', '--consumer-key'):
       config['consumer-token'] = a
