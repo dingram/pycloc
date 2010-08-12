@@ -128,6 +128,11 @@ def request_token(url, **config):
     raise Exception('Invalid response status: %s' % resp['status'])
 
   request_token = dict(urlparse.parse_qsl(content))
+
+  if 'oauth_token' not in request_token or 'oauth_token_secret' not in request_token:
+    print content
+    raise Exception('Could not retrieve request token from response')
+
   print "Request token        = %s"%request_token['oauth_token']
   print "Request token secret = %s"%request_token['oauth_token_secret']
   print
@@ -144,6 +149,11 @@ def access_token(url, **config):
     raise Exception('Invalid response status: %s' % resp['status'])
 
   access_token = dict(urlparse.parse_qsl(content))
+
+  if 'oauth_token' not in access_token or 'oauth_token_secret' not in access_token:
+    print content
+    raise Exception('Could not retrieve access token from response')
+
   print "Access token        = %s"%access_token['oauth_token']
   print "Access token secret = %s"%access_token['oauth_token_secret']
   print
